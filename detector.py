@@ -121,7 +121,7 @@ class RTDETRVideoProcessor:
                 frame,
                 persist=True,
                 conf=0.4,
-                classes=[0, 2],
+                classes=[0, 2,5,7,15,16],
                 tracker="botsort.yaml",
                 verbose=False
             )
@@ -132,7 +132,7 @@ class RTDETRVideoProcessor:
 
                     cls = int(box.cls[0])
 
-                    if cls not in [0, 2]:
+                    if cls not in [0, 2, 5, 7, 15, 16]:
                         continue
 
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
