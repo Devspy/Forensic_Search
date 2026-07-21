@@ -8,7 +8,7 @@ from report_generator import ReportGenerator
 
 class RTDETRVideoProcessor:
 
-    def __init__(self, model, video_path, manager):
+    def __init__(self, model, video_path, manager, search_object=None, search_color=None):
 
         self.model = model
         self.video_path = video_path
@@ -20,6 +20,74 @@ class RTDETRVideoProcessor:
         self.window_name = video_path
         self.frame_count = 0
         self.fps = 0
+        self.search_object = (search_object or "").strip().lower()
+        self.search_color = self._normalize_color_name(search_color)
+        self.default_class_ids = [0, 2, 5, 7, 15, 16]
+        self.class_name_map = {
+            "person": 0,
+            "car": 2,
+            "cat": 15,
+            "dog": 16,
+            "bicycle": 1,
+            "motorbike": 3,
+            "bus": 5,
+            "truck": 7,
+        }
+        self.allowed_class_ids = self.get_allowed_class_ids()
+
+        if self.search_object or self.search_color:
+            print(f"Search filter -> object: {self.search_object or 'all'}, color: {self.search_color or 'any'}")
+
+    def _normalize_color_name(self, color_name):
+        if not color_name:
+            return ""
+        return color_name.strip().lower().replace("grey", "gray")
+
+    def get_allowed_class_ids(self):
+        if self.search_object:
+            mapped_class_id = self.class_name_map.get(self.search_object)
+            if mapped_class_id is not None:
+                return [mapped_class_id]
+        return self.default_class_ids
+
+    def get_dominant_color_name(self, crop):
+        if crop is None or crop.size == 0:
+            return None
+
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        hue = np.mean(hsv[:, :, 0])
+        saturation = np.mean(hsv[:, :, 1])
+        value = np.mean(hsv[:, :, 2])
+
+        if saturation < 40:
+            if value < 60:
+                return "black"
+            if value > 180:
+                return "white"
+            return "gray"
+
+        if hue < 20 or hue > 160:
+            return "red"
+        if hue < 40:
+            return "yellow"
+        if hue < 80:
+            return "green"
+        if hue < 140:
+            return "blue"
+        return "purple"
+
+    def matches_user_request(self, label, crop):
+        label_name = (label or "").strip().lower()
+
+        if self.search_object and label_name != self.search_object:
+            return False
+
+        if self.search_color:
+            dominant_color = self.get_dominant_color_name(crop)
+            if dominant_color != self.search_color:
+                return False
+
+        return True
 
     def get_video_time(self, milliseconds):
         """Convert milliseconds to video timestamp in HH:MM:SS format"""
@@ -129,7 +197,7 @@ class RTDETRVideoProcessor:
                 frame,
                 persist=True,
                 conf=0.4,
-                classes=[0, 2,5,7,15,16],
+                classes=self.allowed_class_ids,
                 tracker="botsort.yaml",
                 verbose=False
             )
@@ -146,6 +214,12 @@ class RTDETRVideoProcessor:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     label = self.model.names[cls]
                     confidence = float(box.conf[0])
+                    crop = frame[y1:y2, x1:x2]
+
+                    if not self.matches_user_request(label, crop):
+                        continue
+
+                    object_id = f"{label}_{self.frame_count:04d}"
 
                     # Get tracking ID from botsort
                     if box.id is not None:
@@ -156,7 +230,6 @@ class RTDETRVideoProcessor:
                         # Create or update tracked object
                         if object_id not in self.tracked_objects:
                             # Create new object entry
-                            crop = frame[y1:y2, x1:x2]
                             crop = self.resize_crop(crop, min_size=256)
                             
                             self.tracked_objects[object_id] = {
@@ -196,6 +269,8 @@ class RTDETRVideoProcessor:
                                 crop = frame[y1:y2, x1:x2]
                                 crop = self.resize_crop(crop, min_size=256)
                                 self.tracked_objects[object_id]["crop_data"] = crop
+                    else:
+                        self.unique_ids.add(object_id)
 
                     cv2.rectangle(frame, (x1, y1), (x2, y2),
                                   (0, 255, 0), 2)

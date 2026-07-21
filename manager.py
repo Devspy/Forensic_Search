@@ -27,12 +27,14 @@ class VideoManager:
 
         self.lock = threading.Lock()
 
-    def add_video(self, video_path):
+    def add_video(self, video_path, search_object=None, search_color=None):
 
         processor = RTDETRVideoProcessor(
             model=self.model,
             video_path=video_path,
-            manager=self
+            manager=self,
+            search_object=search_object,
+            search_color=search_color
         )
 
         thread = threading.Thread(

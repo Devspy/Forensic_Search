@@ -9,7 +9,9 @@ manager = VideoManager("Resource\\rtdetr-l.pt")
 manager.start()
 
 # Add videos dynamically
-manager.add_video("VideoFile\\video2.mp4")
+# Example: manager.add_video("VideoFile\\video2.mp4", search_object="person", search_color="red")
+# If no object/color is provided, the app will search for all default classes.
+manager.add_video("VideoFile\\video2.mp4", search_object="person")
 #manager.add_video("VideoFile\\video2.mp4")
 
 time.sleep(5)
