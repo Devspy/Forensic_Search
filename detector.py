@@ -85,9 +85,17 @@ class RTDETRVideoProcessor:
 
     def process_video(self):
 
+        start_time = datetime.now()
+        print(f"Video processing started for {self.video_path} at {start_time.strftime('%Y-%m-%d %H:%M:%S ')}")
+
         cap = cv2.VideoCapture(self.video_path)
 
         if not cap.isOpened():
+            end_time = datetime.now()
+            elapsed_seconds = int((end_time - start_time).total_seconds())
+            minutes, seconds = divmod(elapsed_seconds, 60)
+            print(f"Video processing ended for {self.video_path} at {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Video processing duration for {self.video_path}: {minutes}m {seconds}s")
             self.manager.remove_video(self.video_path)
             return
 
@@ -142,7 +150,7 @@ class RTDETRVideoProcessor:
                     # Get tracking ID from botsort
                     if box.id is not None:
                         track_id = int(box.id[0])
-                        object_id = f"OBJ_{track_id:04d}"
+                        object_id = f"ID: {track_id}"
                         self.unique_ids.add(object_id)
 
                         # Create or update tracked object
@@ -224,5 +232,11 @@ class RTDETRVideoProcessor:
         except Exception as e:
             print(f"Error deleting snapshot folder: {e}")
         
+        end_time = datetime.now()
+        elapsed_seconds = int((end_time - start_time).total_seconds())
+        minutes, seconds = divmod(elapsed_seconds, 60)
+        print(f"Video processing ended for {self.video_path} at {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Video processing duration for {self.video_path}: {minutes}m {seconds}s")
+
         # Remove this video from manager
         self.manager.remove_video(self.video_path)
