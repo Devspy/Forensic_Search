@@ -62,7 +62,7 @@ class ReportGenerator:
 
         elements.append(
             Paragraph(
-                f"<b>Total Unique Objects :</b> {len(unique_ids)}",
+                f"<b>Total Unique Objects :</b> {len(tracked_objects)}",
                 styles["Heading2"]
             )
         )
@@ -205,7 +205,7 @@ class ReportGenerator:
         # --------------------------------------------------
         elements.append(
             Paragraph(
-                f"<b>Grand Total Objects Detected :</b> {len(unique_ids)}",
+                f"<b>Grand Total Objects Detected :</b> {len(tracked_objects)}",
                 styles["Heading2"]
             )
         )
@@ -231,5 +231,5 @@ class ReportGenerator:
         print("PDF Report Generated Successfully")
         print(f"Video : {video_name}")
         print(f"Report : {pdf_path}")
-        print(f"Total Objects : {len(unique_ids)}")
+        print(f"Total Objects : {len(tracked_objects)}")
         print("=" * 60)

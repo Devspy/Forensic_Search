@@ -225,52 +225,50 @@ class RTDETRVideoProcessor:
                     if box.id is not None:
                         track_id = int(box.id[0])
                         object_id = f"ID: {track_id}"
-                        self.unique_ids.add(object_id)
 
-                        # Create or update tracked object
-                        if object_id not in self.tracked_objects:
-                            # Create new object entry
-                            crop = self.resize_crop(crop, min_size=256)
-                            
-                            self.tracked_objects[object_id] = {
-                                "class": label,
-                                "max_conf": confidence,
-                                "image": None,  # Will be set when we save
-                                "crop_data": crop,  # Store crop in memory
-                                "first_seen": current_time,
-                                "last_seen": current_time,
-                                "x1": x1,
-                                "y1": y1,
-                                "x2": x2,
-                                "y2": y2,
-                                "best_frame": self.frame_count
-                            }
-                        else:
-                            # Update existing object
-                            self.tracked_objects[object_id]["last_seen"] = current_time
-                            self.tracked_objects[object_id]["x1"] = x1
-                            self.tracked_objects[object_id]["y1"] = y1
-                            self.tracked_objects[object_id]["x2"] = x2
-                            self.tracked_objects[object_id]["y2"] = y2
-                            
-                            # Update if we found a better quality detection
-                            if confidence > self.tracked_objects[object_id]["max_conf"]:
-                                self.tracked_objects[object_id]["max_conf"] = confidence
-                                self.tracked_objects[object_id]["best_frame"] = self.frame_count
-                                
-                                # Delete previous image file if it exists
-                                if self.tracked_objects[object_id]["image"] and os.path.exists(self.tracked_objects[object_id]["image"]):
-                                    try:
-                                        os.remove(self.tracked_objects[object_id]["image"])
-                                    except:
-                                        pass
-                                
-                                # Update with new better quality crop
-                                crop = frame[y1:y2, x1:x2]
-                                crop = self.resize_crop(crop, min_size=256)
-                                self.tracked_objects[object_id]["crop_data"] = crop
+                    self.unique_ids.add(object_id)
+
+                    # Create or update tracked object
+                    if object_id not in self.tracked_objects:
+                        # Create new object entry
+                        crop = self.resize_crop(crop, min_size=256)
+                        
+                        self.tracked_objects[object_id] = {
+                            "class": label,
+                            "max_conf": confidence,
+                            "image": None,  # Will be set when we save
+                            "crop_data": crop,  # Store crop in memory
+                            "first_seen": current_time,
+                            "last_seen": current_time,
+                            "x1": x1,
+                            "y1": y1,
+                            "x2": x2,
+                            "y2": y2,
+                            "best_frame": self.frame_count
+                        }
                     else:
-                        self.unique_ids.add(object_id)
+                        # Update existing object
+                        self.tracked_objects[object_id]["last_seen"] = current_time
+                        self.tracked_objects[object_id]["x1"] = x1
+                        self.tracked_objects[object_id]["y1"] = y1
+                        self.tracked_objects[object_id]["x2"] = x2
+                        self.tracked_objects[object_id]["y2"] = y2
+                        
+                        # Update if we found a better quality detection
+                        if confidence > self.tracked_objects[object_id]["max_conf"]:
+                            self.tracked_objects[object_id]["max_conf"] = confidence
+                            self.tracked_objects[object_id]["best_frame"] = self.frame_count
+                            
+                            # Delete previous image file if it exists
+                            if self.tracked_objects[object_id]["image"] and os.path.exists(self.tracked_objects[object_id]["image"]):
+                                try:
+                                    os.remove(self.tracked_objects[object_id]["image"])
+                                except:
+                                    pass
+                            
+                            # Update with new better quality crop
+                            crop = self.resize_crop(crop, min_size=256)
+                            self.tracked_objects[object_id]["crop_data"] = crop
 
                     cv2.rectangle(frame, (x1, y1), (x2, y2),
                                   (0, 255, 0), 2)
