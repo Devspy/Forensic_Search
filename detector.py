@@ -178,6 +178,8 @@ class RTDETRVideoProcessor:
                 break
 
             self.frame_count += 1
+            frame = cv2.resize(frame, (1080, 720), interpolation=cv2.INTER_AREA)
+
 
             # Get current video time - try using video capture position, fallback to frame count
             pos_msec = cap.get(cv2.CAP_PROP_POS_MSEC)
@@ -231,6 +233,13 @@ class RTDETRVideoProcessor:
                     # Create or update tracked object
                     if object_id not in self.tracked_objects:
                         # Create new object entry
+                        if crop.size == 0:
+                             continue
+                        
+                        h, w = crop.shape[:2]
+                        if h == 0 or w == 0:
+                            continue
+
                         crop = self.resize_crop(crop, min_size=256)
                         
                         self.tracked_objects[object_id] = {
