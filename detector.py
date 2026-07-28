@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 from report_generator import ReportGenerator
+from deep_sort_realtime.deepsort_tracker import DeepSort
 
 class RTDETRVideoProcessor:
 
@@ -34,6 +35,11 @@ class RTDETRVideoProcessor:
             "truck": 7,
         }
         self.allowed_class_ids = self.get_allowed_class_ids()
+        self.tracker = DeepSort(
+                max_age=30,
+                n_init=3,
+                max_cosine_distance=0.4
+            )
 
         if self.search_object or self.search_color:
             print(f"Search filter -> object: {self.search_object or 'all'}, color: {self.search_color or 'any'}")
@@ -195,17 +201,18 @@ class RTDETRVideoProcessor:
                     current_time = "00:00:00"
 
             # Use botsort.yaml tracker for persistent tracking
-            results = self.model.track(
+            # Object Detection
+            results = self.model(
                 frame,
-                persist=True,
                 conf=0.4,
                 classes=self.allowed_class_ids,
-                tracker="botsort.yaml",
                 verbose=False
             )
 
-            for result in results:
+            detections = []
+            detection_info = []
 
+            for result in results:
                 for box in result.boxes:
 
                     cls = int(box.cls[0])
@@ -214,86 +221,153 @@ class RTDETRVideoProcessor:
                         continue
 
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    label = self.model.names[cls]
+
                     confidence = float(box.conf[0])
+
+                    label = self.model.names[cls]
+
                     crop = frame[y1:y2, x1:x2]
+
+                    if crop.size == 0:
+                        continue
+
+                    area = (x2 - x1) * (y2 - y1)
+
+                    if area < 400:
+                        continue
 
                     if not self.matches_user_request(label, crop):
                         continue
 
-                    object_id = f"{label}_{self.frame_count:04d}"
+                    detections.append(
+                        (
+                            [x1, y1, x2 - x1, y2 - y1],
+                            confidence,
+                            label
+                        )
+                    )
 
-                    # Get tracking ID from botsort
-                    if box.id is not None:
-                        track_id = int(box.id[0])
-                        object_id = f"ID: {track_id}"
+                    detection_info.append({
+                        "bbox": [x1, y1, x2, y2],
+                        "label": label,
+                        "confidence": confidence,
+                        "crop": crop.copy(),
+                        "class_id": cls
+                    })
+                                
 
-                    self.unique_ids.add(object_id)
 
-                    # Create or update tracked object
-                    if object_id not in self.tracked_objects:
-                        # Create new object entry
-                        if crop.size == 0:
-                             continue
-                        
-                        h, w = crop.shape[:2]
-                        if h == 0 or w == 0:
-                            continue
+            tracks = self.tracker.update_tracks(
+                    detections,
+                    frame=frame
+                )
+            # print(type(tracks))
+            # print(type(trackers))
+            # print(tracks)
+# 
+          
 
-                        crop = self.resize_crop(crop, min_size=256)
-                        
-                        self.tracked_objects[object_id] = {
-                            "class": label,
-                            "max_conf": confidence,
-                            "image": None,  # Will be set when we save
-                            "crop_data": crop,  # Store crop in memory
-                            "first_seen": current_time,
-                            "last_seen": current_time,
-                            "x1": x1,
-                            "y1": y1,
-                            "x2": x2,
-                            "y2": y2,
-                            "best_frame": self.frame_count
-                        }
-                    else:
-                        # Update existing object
-                        self.tracked_objects[object_id]["last_seen"] = current_time
-                        self.tracked_objects[object_id]["x1"] = x1
-                        self.tracked_objects[object_id]["y1"] = y1
-                        self.tracked_objects[object_id]["x2"] = x2
-                        self.tracked_objects[object_id]["y2"] = y2
-                        
-                        # Update if we found a better quality detection
-                        if confidence > self.tracked_objects[object_id]["max_conf"]:
-                            self.tracked_objects[object_id]["max_conf"] = confidence
-                            self.tracked_objects[object_id]["best_frame"] = self.frame_count
-                            
-                            # Delete previous image file if it exists
-                            if self.tracked_objects[object_id]["image"] and os.path.exists(self.tracked_objects[object_id]["image"]):
-                                try:
-                                    os.remove(self.tracked_objects[object_id]["image"])
-                                except:
-                                    pass
-                            
-                            # Update with new better quality crop
-                            crop = self.resize_crop(crop, min_size=256)
-                            self.tracked_objects[object_id]["crop_data"] = crop
+            # Process SORT tracks
+            for track in tracks:
 
-                    cv2.rectangle(frame, (x1, y1), (x2, y2),
-                                  (0, 255, 0), 2)
+                if not track.is_confirmed():
+                    continue
 
-                    cv2.putText(frame,
-                                f"{object_id} - {label} ({confidence:.2f})",
-                                (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.6,
-                                (0, 255, 0),
-                                2)
+                if track.time_since_update > 0:
+                    continue
 
+                x1, y1, x2, y2 = map(int, track.to_ltrb())
+                track_id = track.track_id
+
+                object_id = f"ID:{track_id}"
+
+                best_match = None
+                best_iou = 0
+
+                for det in detection_info:
+
+                    dx1, dy1, dx2, dy2 = det["bbox"]
+
+                    xx1 = max(x1, dx1)
+                    yy1 = max(y1, dy1)
+                    xx2 = min(x2, dx2)
+                    yy2 = min(y2, dy2)
+
+                    inter = max(0, xx2 - xx1) * max(0, yy2 - yy1)
+
+                    area_track = (x2 - x1) * (y2 - y1)
+                    area_det = (dx2 - dx1) * (dy2 - dy1)
+
+                    union = area_track + area_det - inter
+
+                    if union <= 0:
+                        continue
+
+                    iou = inter / union
+
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_match = det
+
+                if best_match is None or best_iou < 0.3:
+                    continue
+
+                label = best_match["label"]
+                confidence = best_match["confidence"]
+                crop = best_match["crop"]
+
+                self.unique_ids.add(object_id)
+
+                if object_id not in self.tracked_objects:
+
+                    crop = self.resize_crop(crop)
+
+                    self.tracked_objects[object_id] = {
+                        "class": label,
+                        "max_conf": confidence,
+                        "image": None,
+                        "crop_data": crop,
+                        "first_seen": current_time,
+                        "last_seen": current_time,
+                        "x1": x1,
+                        "y1": y1,
+                        "x2": x2,
+                        "y2": y2,
+                        "best_frame": self.frame_count
+                    }
+
+                else:
+
+                    obj = self.tracked_objects[object_id]
+
+                    obj["last_seen"] = current_time
+                    obj["x1"] = x1
+                    obj["y1"] = y1
+                    obj["x2"] = x2
+                    obj["y2"] = y2
+
+                    if confidence > obj["max_conf"]:
+
+                        obj["max_conf"] = confidence
+                        obj["best_frame"] = self.frame_count
+                        obj["crop_data"] = self.resize_crop(crop)
+
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+
+                cv2.putText(
+                    frame,
+                    f"{object_id} - {label}",
+                    (x1, y1-10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0,255,0),
+                    2
+                )
             cv2.imshow(self.window_name, frame)
 
             if cv2.waitKey(1) == 27:
                 break
+
 
         cap.release()
         try:
